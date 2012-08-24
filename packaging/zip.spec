@@ -4,7 +4,7 @@ Version: 2.31
 Release: 1.2.2
 License: distributable
 Group: Applications/Archiving
-Source: http://ftp.info-zip.org/pub/infozip/src/zip231.tar.gz
+Source: http://ftp.info-zip.org/pub/infozip/src/zip-2.31.tar.gz
 Source1: ftp://ftp.freesoftware.com/pub/infozip/src/zcrypt29.tar.gz
 URL: http://www.info-zip.org/pub/infozip/Zip.html
 Patch0: zip23.patch
