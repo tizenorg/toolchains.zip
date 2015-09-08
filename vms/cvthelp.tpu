@@ -1,13 +1,13 @@
 !       TITLE   CVTHELP.TPU
-!       IDENT   01-000
+!       IDENT   01-001
 !
 !++
-! Copyright (c) 1990-1999 Info-ZIP.  All rights reserved.
+! Copyright (c) 1990-2001 Info-ZIP.  All rights reserved.
 !
-! See the accompanying file LICENSE, version 1999-Oct-05 or later
+! See the accompanying file LICENSE, version 2000-Apr-09 or later
 ! (the contents of which are also included in zip.h) for terms of use.
-! If, for some reason, both of these files are missing, the Info-ZIP license
-! also may be found at:  ftp://ftp.cdrom.com/pub/infozip/license.html
+! If, for some reason, all these files are missing, the Info-ZIP license
+! also may be found at:  ftp://ftp.info-zip.org/pub/infozip/license.html
 !
 !++
 !
@@ -25,6 +25,9 @@
 !       $ EDIT/TPU/NOJOURNAL/NODISPLAY/COMMAND=CVTHELP file.HELP
 !
 !  Modified by:
+!
+!       01-001          Hunter Goatley            7-FEB-2001 15:40
+!               Added <NEXT> for qualifier separators.
 !
 !       01-000          Hunter Goatley           12-JAN-1992 15:15
 !               Original version.
@@ -50,6 +53,8 @@ Local   temp
    hg$substitute_comment(current_buffer,"<INIT>",".noflags;.lm3;.rm70");
    hg$substitute_comment(current_buffer,"<LITERAL>",".lm+4;.literal");
    hg$substitute_comment(current_buffer,"<LARETIL>",".end literal;.lm-4");
+   hg$substitute_comment(current_buffer,"<LITERAL0>",".literal");
+   hg$substitute_comment(current_buffer,"<0LARETIL>",".end literal");
    hg$substitute_comment(current_buffer,"<DOT1LIST>",'.list 1,"o"');
    hg$substitute_comment(current_buffer,"<DOT0LIST>",'.list 0,"o"');
    hg$substitute_comment(current_buffer,"<ENTRY>",".le");
@@ -60,6 +65,7 @@ Local   temp
    hg$substitute_comment(current_buffer,"<ETON>",".end note");
    hg$substitute_comment(current_buffer, LINE_BEGIN & LINE_END,".sk");
    hg$substitute_comment(current_buffer, LINE_BEGIN & "|", "");
+   hg$substitute_comment(current_buffer,"<NEXT>",".br");
 
 EndProcedure;           ! eve_convert_help
 

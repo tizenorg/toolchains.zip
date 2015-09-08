@@ -66,7 +66,7 @@ LINK32=link.exe
 # PROP Intermediate_Dir "zip___Win32_ASM_Debug"
 # PROP Target_Dir ""
 # ADD BASE CPP /nologo /W3 /Gm /GX /ZI /Od /D "WIN32" /FD /GZ /c
-# ADD CPP /nologo /W3 /Gm /GX /ZI /Od /D "WIN32" /D "ASM_CRC" /D "ASMV" /FD /GZ /c
+# ADD CPP /nologo /W3 /Gm /GX /ZI /Od /D "WIN32" /D "ASM_CRC" /D "ASMV" /FR /FD /GZ /c
 # ADD BASE RSC /l 0x409 /d "_DEBUG"
 # ADD RSC /l 0x409 /d "_DEBUG"
 BSC32=bscmake.exe
@@ -89,7 +89,7 @@ LINK32=link.exe
 # PROP Intermediate_Dir "zip___Win32_Release"
 # PROP Target_Dir ""
 # ADD BASE CPP /nologo /W3 /GX /O2 /D "WIN32" /FD /c
-# ADD CPP /nologo /W3 /GX /O2 /D "WIN32" /D "NO_ASM" /FD /c
+# ADD CPP /nologo /W3 /GX /O2 /D "NO_ASM" /D "WIN32" /FD /c
 # ADD BASE RSC /l 0x409 /d "NDEBUG"
 # ADD RSC /l 0x409 /d "NDEBUG"
 BSC32=bscmake.exe
@@ -110,9 +110,10 @@ LINK32=link.exe
 # PROP Use_Debug_Libraries 1
 # PROP Output_Dir "zip___Win32_Debug"
 # PROP Intermediate_Dir "zip___Win32_Debug"
+# PROP Ignore_Export_Lib 0
 # PROP Target_Dir ""
 # ADD BASE CPP /nologo /W3 /Gm /GX /ZI /Od /D "WIN32" /FD /GZ /c
-# ADD CPP /nologo /W3 /Gm /GX /ZI /Od /D "WIN32" /D "NO_ASM" /FD /GZ /c
+# ADD CPP /nologo /W3 /Gm /GX /ZI /Od /D "WIN32" /D "NO_ASM" /FR /FD /GZ /c
 # ADD BASE RSC /l 0x409 /d "_DEBUG"
 # ADD RSC /l 0x409 /d "_DEBUG"
 BSC32=bscmake.exe
@@ -136,10 +137,6 @@ LINK32=link.exe
 # Begin Source File
 
 SOURCE=..\..\crc32.c
-# End Source File
-# Begin Source File
-
-SOURCE=..\..\crctab.c
 # End Source File
 # Begin Source File
 
@@ -179,11 +176,19 @@ SOURCE=..\win32.c
 # End Source File
 # Begin Source File
 
+SOURCE=..\win32i64.c
+# End Source File
+# Begin Source File
+
 SOURCE=..\win32zip.c
 # End Source File
 # Begin Source File
 
 SOURCE=..\..\zip.c
+# End Source File
+# Begin Source File
+
+SOURCE=..\zip.rc
 # End Source File
 # Begin Source File
 
@@ -197,6 +202,10 @@ SOURCE=..\..\zipup.c
 # Begin Group "Header Files"
 
 # PROP Default_Filter "h;hpp;hxx;hm;inl"
+# Begin Source File
+
+SOURCE=..\..\crc32.h
+# End Source File
 # Begin Source File
 
 SOURCE=..\..\crypt.h
@@ -271,6 +280,8 @@ InputName=crc_i386
 "$(IntDir)\$(InputName).obj" : $(SOURCE) "$(INTDIR)" "$(OUTDIR)"
 	ml /nologo /c /Cx /coff /Zi /Fo"$(IntDir)\$(InputName).obj" "$(InputPath)"
 
+# End Custom Build
+
 !ELSEIF  "$(CFG)" == "zip - Win32 Release"
 
 # PROP Exclude_From_Build 1
@@ -278,8 +289,6 @@ InputName=crc_i386
 !ELSEIF  "$(CFG)" == "zip - Win32 Debug"
 
 # PROP Exclude_From_Build 1
-
-# End Custom Build
 
 !ENDIF 
 
@@ -310,6 +319,8 @@ InputName=match32
 "$(IntDir)\$(InputName).obj" : $(SOURCE) "$(INTDIR)" "$(OUTDIR)"
 	ml /nologo /c /Cx /coff /Zi /Fo"$(IntDir)\$(InputName).obj" "$(InputPath)"
 
+# End Custom Build
+
 !ELSEIF  "$(CFG)" == "zip - Win32 Release"
 
 # PROP Exclude_From_Build 1
@@ -317,8 +328,6 @@ InputName=match32
 !ELSEIF  "$(CFG)" == "zip - Win32 Debug"
 
 # PROP Exclude_From_Build 1
-
-# End Custom Build
 
 !ENDIF 
 

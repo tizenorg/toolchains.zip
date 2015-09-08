@@ -1,9 +1,9 @@
 /*
-  Copyright (c) 1990-2005 Info-ZIP.  All rights reserved.
+  Copyright (c) 1990-2007 Info-ZIP.  All rights reserved.
 
-  See the accompanying file LICENSE, version 2004-May-22 or later
+  See the accompanying file LICENSE, version 2007-Mar-4 or later
   (the contents of which are also included in zip.h) for terms of use.
-  If, for some reason, both of these files are missing, the Info-ZIP license
+  If, for some reason, all these files are missing, the Info-ZIP license
   also may be found at:  ftp://ftp.info-zip.org/pub/infozip/license.html
 */
 /*
@@ -15,7 +15,7 @@
  *      vms_stat() added - version of stat() that handles special
  *      case when end-of-file-block == 0
  *
- *  2.3.1       11-oct-2004     SMS
+ *  3.0         11-oct-2004     SMS
  *      It would be nice to know why vms_stat() is needed.  If EOF can't
  *      be trusted for a zero-length file, why trust it for any file?
  *      Anyway, I removed the (int) cast on ->st_size, which may now be
@@ -28,9 +28,10 @@
 
 #ifdef VMS                      /* For VMS only ! */
 
-#define NO_ZIPUP_H              /* prevent inclusion of vms/zipup.h */
+#define NO_ZIPUP_H              /* Prevent full inclusion of vms/zipup.h. */
 
 #include "zip.h"
+#include "zipup.h"              /* Only partial. */
 
 #include <stdio.h>
 #include <string.h>
@@ -39,6 +40,7 @@
 #include <fab.h>                /* Needed only in old environments. */
 #include <nam.h>                /* Needed only in old environments. */
 #include <starlet.h>
+#include <ssdef.h>
 #include <stsdef.h>
 
 /* On VAX, define Goofy VAX Type-Cast to obviate /standard = vaxc.
@@ -64,7 +66,7 @@
 
 # include "vms.h"
 
-#else /* def UTIL */
+#else /* not UTIL */
 
 /* Include the `VMS attributes' preserving file-io code. We distinguish
    between two incompatible flavours of storing VMS attributes in the
@@ -84,7 +86,7 @@
 #include "vms_pk.c"
 #include "vms_im.c"
 
-#endif /* def UTIL */
+#endif /* not UTIL [else] */
 
 #ifndef ERR
 #define ERR(x) (((x)&1)==0)
@@ -94,13 +96,12 @@
 #define NULL (void*)(0L)
 #endif
 
-int vms_stat(file,s)
-char *file;
-stat_t *s;
+int vms_stat( char *file, stat_t *s)
 {
     int status;
     int staterr;
     struct FAB fab;
+    struct NAM_STRUCT nam;
     struct XABFHC fhc;
 
     /*
@@ -123,10 +124,20 @@ stat_t *s;
      */
 
     fab = cc$rms_fab;
+    nam = CC_RMS_NAM;
     fhc = cc$rms_xabfhc;
-    fab.fab$l_fna = file;
-    fab.fab$b_fns = strlen(file);
+    fab.FAB_NAM = &nam;
     fab.fab$l_xab = (char*)(&fhc);
+
+#ifdef NAML$C_MAXRSS
+
+    fab.fab$l_dna = (char *) -1;    /* Using NAML for default name. */
+    fab.fab$l_fna = (char *) -1;    /* Using NAML for file name. */
+
+#endif /* def NAML$C_MAXRSS */
+
+    FAB_OR_NAML( fab, nam).FAB_OR_NAML_FNA = file;
+    FAB_OR_NAML( fab, nam).FAB_OR_NAML_FNS = strlen( file);
 
     fab.fab$b_fac = FAB$M_GET;
 
@@ -151,49 +162,105 @@ stat_t *s;
         return status;
 }
 
+
+/*
+ * 2007-01-29 SMS.
+ *
+ *  VMS Status Code Summary  (See STSDEF.H for details.)
+ *
+ *      Bits:   31:28    27:16     15:3     2:0
+ *      Field:  Control  Facility  Message  Severity
+ *
+ *  In the Control field, bits 31:29 are reserved.  Bit 28 inhibits
+ *  printing the message.  In the Facility field, bit 27 means
+ *  customer-defined (not HP-assigned, like us).  In the Message field,
+ *  bit 15 means facility-specific (which our messages are).  The
+ *  Severity codes are 0 = Warning, 1 = Success, 2 = Error, 3 = Info,
+ *  4 = Severe (fatal).
+ *
+ *  Previous versions of Info-ZIP programs used a generic ("chosen (by
+ *  experimentation)") Control+Facility code of 0x7FFF, which included
+ *  some reserved control bits, the inhibit-printing bit, and the
+ *  customer-defined bit.
+ *
+ *  HP has now assigned official Facility names and corresponding
+ *  Facility codes for the Info-ZIP products:
+ *
+ *      Facility Name    Facility Code
+ *      IZ_UNZIP         1954 = 0x7A2
+ *      IZ_ZIP           1955 = 0x7A3
+ *
+ *  Now, unless the CTL_FAC_IZ_ZIP macro is defined at build-time, we
+ *  will use the official Facility code.
+ *
+ */
+
+/* Official HP-assigned Info-ZIP Zip Facility code. */
+#define FAC_IZ_ZIP 1955   /* 0x7A3 */
+
+#ifndef CTL_FAC_IZ_ZIP
+   /*
+    * Default is inhibit-printing with the official Facility code.
+    */
+#  define CTL_FAC_IZ_ZIP ((0x1 << 12)| FAC_IZ_ZIP)
+#  define MSG_FAC_SPEC 0x8000   /* Facility-specific code. */
+#else /* ndef CTL_FAC_IZ_ZIP */
+   /* Use the user-supplied Control+Facility code for err or warn. */
+#  define OLD_STATUS
+#  ifndef MSG_FAC_SPEC          /* Old default is not Facility-specific. */
+#    define MSG_FAC_SPEC 0x0    /* Facility-specific code.  Or 0x8000. */
+#  endif /* ndef MSG_FAC_SPEC */
+#endif /* ndef CTL_FAC_IZ_ZIP [else] */
+
+
+/* Return an intelligent status/severity code. */
+
 void vms_exit(e)
    int e;
 {
-/*---------------------------------------------------------------------------
-    Return an intelligent status/severity level if RETURN_SEVERITY defined:
-
-    $STATUS          $SEVERITY = $STATUS & 7
-    31 .. 16 15 .. 3   2 1 0
-                       -----
-    VMS                0 0 0  0    Warning
-    FACILITY           0 0 1  1    Success
-    Number             0 1 0  2    Error
-             MESSAGE   0 1 1  3    Information
-             Number    1 0 0  4    Severe (fatal) error
-
-    0x7FFF0000 was chosen (by experimentation) to be outside the range of
-    VMS FACILITYs that have dedicated message numbers.  Hopefully this will
-    always result in silent exits--it does on VMS 5.4.  Note that the C li-
-    brary translates exit arguments of zero to a $STATUS value of 1 (i.e.,
-    exit is both silent and has a $SEVERITY of "success").
-  ---------------------------------------------------------------------------*/
   {
-    int severity;
+#ifndef OLD_STATUS
 
-    switch (e) {                        /* $SEVERITY: */
-      case ZE_NONE:
-          severity = 0; break;          /*   warning  */
-      case ZE_FORM:
-      case ZE_BIG:
-      case ZE_NOTE:
-      case ZE_ABORT:
-      case ZE_NAME:
-      case ZE_PARMS:
-      case ZE_OPEN:
-          severity = 2; break;          /*   error    */
-      default:
-          severity = 4; break;          /*   fatal    */
-    }
-
-    exit(                                       /* $SEVERITY:              */
-         (e == ZE_OK) ? 1 :                     /*   success               */
-         (0x7FFF0000 | (e << 4) | severity)     /*   warning, error, fatal */
+    /*
+     * Exit with code comprising Control, Facility, (facility-specific)
+     * Message, and Severity.
+     */
+    exit( (CTL_FAC_IZ_ZIP << 16) |              /* Facility                */
+          MSG_FAC_SPEC |                        /* Facility-specific       */
+          (e << 4) |                            /* Message code            */
+          (ziperrors[ e].severity & 0x07)       /* Severity                */
         );
+
+#else /* ndef OLD_STATUS */
+
+    /* 2007-01-17 SMS.
+     * Defining OLD_STATUS provides the same behavior as in Zip versions
+     * before an official VMS Facility code had been assigned, which
+     * means that Success (ZE_OK) gives a status value of 1 (SS$_NORMAL)
+     * with no Facility code, while any error or warning gives a status
+     * value which includes a Facility code.  (Curiously, under the old
+     * scheme, message codes were left-shifted by 4 instead of 3,
+     * resulting in all-even message codes.)  I don't like this, but I
+     * was afraid to remove it, as someone, somewhere may be depending
+     * on it.  Define CTL_FAC_IZ_ZIP as 0x7FFF to get the old behavior.
+     * Define only OLD_STATUS to get the old behavior for Success
+     * (ZE_OK), but using the official HP-assigned Facility code for an
+     * error or warning.  Define MSG_FAC_SPEC to get the desired
+     * behavior.
+     *
+     * Exit with simple SS$_NORMAL for ZE_OK.  Otherwise, exit with code
+     * comprising Control, Facility, Message, and Severity.
+     */
+    exit(
+         (e == ZE_OK) ? SS$_NORMAL :            /* Success (others below)  */
+         ((CTL_FAC_IZ_ZIP << 16) |              /* Facility                */
+          MSG_FAC_SPEC |                        /* Facility-specific (?)   */
+          (e << 4) |                            /* Message code            */
+          (ziperrors[ e].severity & 0x07)       /* Severity                */
+         )
+        );
+
+#endif /* ndef OLD_STATUS */
    }
 }
 
@@ -209,7 +276,7 @@ void version_local()
     char *chrp1;
     char *chrp2;
     char buf[40];
-    char vms_vers[16];
+    char vms_vers[ 16];
     int ver_maj;
 #endif
 #ifdef __DECC_VER
@@ -226,10 +293,10 @@ void version_local()
 
     /* Determine the major version number. */
     ver_maj = 0;
-    chrp1 = strchr( &vms_vers[1], '.');
-    for (chrp2 = &vms_vers[1];
-         chrp2 < chrp1;
-         ver_maj = ver_maj * 10 + *(chrp2++) - '0');
+    chrp1 = strchr( &vms_vers[ 1], '.');
+    for (chrp2 = &vms_vers[ 1];
+     chrp2 < chrp1;
+     ver_maj = ver_maj* 10+ *(chrp2++)- '0');
 
 #endif /* def VMS_VERSION */
 
@@ -265,7 +332,7 @@ void version_local()
 #  if defined( __alpha)
       "OpenVMS",
       (sprintf( buf, " (%s Alpha)", vms_vers), buf),
-#  elif defined( __IA64) /* defined( __alpha) */
+#  elif defined( __ia64) /* defined( __alpha) */
       "OpenVMS",
       (sprintf( buf, " (%s IA64)", vms_vers), buf),
 #  else /* defined( __alpha) */
@@ -304,51 +371,9 @@ void version_local()
  *    actually uses the directory part of the argument or "tempath".
  */
 
-/* Define macros for use with either NAM or NAML. */
 
-#ifdef NAML$C_MAXRSS            /* NAML is available.  Use it. */
-
-#define NAM_STRUCT NAML
-
-#define CC_RMS_NAM cc$rms_naml
-#define FAB_NAM fab$l_naml
-#define NAME nam
-#define NAME_DNA naml$l_long_defname
-#define NAME_DNS naml$l_long_defname_size
-#define NAME_FNA naml$l_long_filename
-#define NAME_FNS naml$l_long_filename_size
-#define NAM_ESA naml$l_long_expand
-#define NAM_ESL naml$l_long_expand_size
-#define NAM_ESS naml$l_long_expand_alloc
-#define NAM_MAXRSS NAML$C_MAXRSS
-#define NAM_NOP naml$b_nop
-#define NAM_TYPE naml$l_long_type
-#define NAM_M_SYNCHK NAML$M_SYNCHK
-
-#else /* def NAML$C_MAXRSS */   /* NAML is not available.  Use NAM. */
-
-#define NAM_STRUCT NAM
-
-#define CC_RMS_NAM cc$rms_nam
-#define FAB_NAM fab$l_nam
-#define NAME fab
-#define NAME_DNA fab$l_dna
-#define NAME_DNS fab$b_dns
-#define NAME_FNA fab$l_fna
-#define NAME_FNS fab$b_fns
-#define NAM_ESA nam$l_esa
-#define NAM_ESL nam$l_esl
-#define NAM_ESS nam$b_ess
-#define NAM_MAXRSS NAM$C_MAXRSS
-#define NAM_NOP nam$b_nop
-#define NAM_TYPE nam$l_type
-#define NAM_M_SYNCHK NAM$M_SYNCHK
-
-#endif /* def NAML$C_MAXRSS */
-
-
-char *tempname( zip)
-char *zip;                      /* Path name of Zip archive. */
+char *tempname( char *zip)
+/* char *zip; */                /* Path name of Zip archive. */
 {
     char *temp_name;            /* Return value. */
     int sts;                    /* System service status. */
@@ -366,23 +391,23 @@ char *zip;                      /* Path name of Zip archive. */
     } jpi_itm_lst = { sizeof( pid), JPI$_PID, &pid, &pid_len };
 
     /* ZI<UNIQUE> name storage. */
-    static char zip_tmp_nam[16] = "ZI<unique>.;";
+    static char zip_tmp_nam[ 16] = "ZI<unique>.;";
 
     struct FAB fab;             /* FAB structure. */
     struct NAM_STRUCT nam;      /* NAM[L] structure. */
 
-    char exp_str[ NAM_MAXRSS + 1];   /* Expanded name storage. */
+    char exp_str[ NAM_MAXRSS+ 1];   /* Expanded name storage. */
 
 #ifdef VMS_UNIQUE_TEMP_BY_TIME
 
     /* Use alternate time-based scheme to generate a unique temporary name. */
-    sprintf( &zip_tmp_nam[2], "%08X", time( NULL));
+    sprintf( &zip_tmp_nam[ 2], "%08X", time( NULL));
 
 #else /* def VMS_UNIQUE_TEMP_BY_TIME */
 
     /* Use the process ID to generate a unique temporary name. */
     sts = sys$getjpiw( 0, 0, 0, &jpi_itm_lst, 0, 0, 0);
-    sprintf( &zip_tmp_nam[2], "%08X", pid);
+    sprintf( &zip_tmp_nam[ 2], "%08X", pid);
 
 #endif /* def VMS_UNIQUE_TEMP_BY_TIME */
 
@@ -407,11 +432,13 @@ char *zip;                      /* Path name of Zip archive. */
 
 #endif /* def NAML$C_MAXRSS */
 
-    NAME.NAME_DNA = zip;            /* Default name = Zip archive name. */
-    NAME.NAME_DNS = strlen( NAME.NAME_DNA);
+    /* Default name = Zip archive name. */
+    FAB_OR_NAML( fab, nam).FAB_OR_NAML_DNA = zip;
+    FAB_OR_NAML( fab, nam).FAB_OR_NAML_DNS = strlen( zip);
 
-    NAME.NAME_FNA = zip_tmp_nam;    /* File name = "ZI<unique>,;". */
-    NAME.NAME_FNS = strlen( NAME.NAME_FNA);
+    /* File name = "ZI<unique>,;". */
+    FAB_OR_NAML( fab, nam).FAB_OR_NAML_FNA = zip_tmp_nam;
+    FAB_OR_NAML( fab, nam).FAB_OR_NAML_FNS = strlen( zip_tmp_nam);
 
     nam.NAM_ESA = exp_str;      /* Expanded name (result) storage. */
     nam.NAM_ESS = NAM_MAXRSS;   /* Size of expanded name storage. */
@@ -424,12 +451,12 @@ char *zip;                      /* Path name of Zip archive. */
     if ((sts& STS$M_SEVERITY) == STS$M_SUCCESS)
     {
         /* Overlay any resulting file type (typically ".ZIP") with none. */
-        strcpy( nam.NAM_TYPE, ".;");
+        strcpy( nam.NAM_L_TYPE, ".;");
 
         /* Allocate temp name storage (as caller expects), and copy the
            (truncated) temp name into the new location.
         */
-        temp_name = malloc( strlen( nam.NAM_ESA) + 1);
+        temp_name = malloc( strlen( nam.NAM_ESA)+ 1);
 
         if (temp_name != NULL)
         {
@@ -437,7 +464,174 @@ char *zip;                      /* Path name of Zip archive. */
         }
     }
     return temp_name;
-} /* tempname() for VMS */
+} /* tempname() for VMS. */
+
+
+/* 2005-02-17 SMS.
+ *
+ *       ziptyp() for VMS.
+ *
+ *    Generate a real Zip archive file name (exact, if it exists), using
+ *    a default file name.
+ *
+ *    2005-02-17 SMS.  Moved to here from [-]ZIPFILE.C, to segregate
+ *    better the RMS stuff.
+ *
+ *    Before 2005-02-17, if sys$parse() failed, ziptyp() returned a null
+ *    string ("&zero", where "static char zero = '\0';").  This
+ *    typically caused Zip to proceed, but then the final rename() of
+ *    the temporary archive would (silently) fail (null file name, after
+ *    all), leaving only the temporary archive file, and providing no
+ *    warning message to the victim.  Now, when sys$parse() fails,
+ *    ziptyp() returns the original string, so a later open() fails, and
+ *    a relatively informative message is provided.  (A VMS-specific
+ *    message could also be provided here, if desired.)
+ *
+ *    2005-09-16 SMS.
+ *    Changed name parsing in ziptyp() to solve a problem with a
+ *    search-list logical name device-directory spec for the zipfile.
+ *    Previously, when the zipfile did not exist (so sys$search()
+ *    failed), the expanded name was used, but as it was
+ *    post-sys$search(), it was based on the _last_ member of the search
+ *    list instead of the first.  Now, the expanded name from the
+ *    original sys$parse() (pre-sys$search()) is retained, and it is
+ *    used if sys$search() fails.  This name is based on the first
+ *    member of the search list, as a user might expect.
+ */
+
+/* Default Zip archive file spec. */
+#define DEF_DEVDIRNAM "SYS$DISK:[].zip"
+
+char *ziptyp( char *s)
+{
+    int status;
+    int exp_len;
+    struct FAB fab;
+    struct NAM_STRUCT nam;
+    char result[ NAM_MAXRSS+ 1];
+    char exp[ NAM_MAXRSS+ 1];
+    char *p;
+
+    fab = cc$rms_fab;                           /* Initialize FAB. */
+    nam = CC_RMS_NAM;                           /* Initialize NAM[L]. */
+    fab.FAB_NAM = &nam;                         /* FAB -> NAM[L] */
+
+#ifdef NAML$C_MAXRSS
+
+    fab.fab$l_dna =(char *) -1;         /* Using NAML for default name. */
+    fab.fab$l_fna = (char *) -1;        /* Using NAML for file name. */
+
+#endif /* def NAML$C_MAXRSS */
+
+    /* Argument file name and length. */
+    FAB_OR_NAML( fab, nam).FAB_OR_NAML_FNA = s;
+    FAB_OR_NAML( fab, nam).FAB_OR_NAML_FNS = strlen( s);
+
+    /* Default file spec and length. */
+    FAB_OR_NAML( fab, nam).FAB_OR_NAML_DNA = DEF_DEVDIRNAM;
+    FAB_OR_NAML( fab, nam).FAB_OR_NAML_DNS = sizeof( DEF_DEVDIRNAM)- 1;
+
+    nam.NAM_ESA = exp;                 /* Expanded name, */
+    nam.NAM_ESS = NAM_MAXRSS;          /* storage size. */
+    nam.NAM_RSA = result;              /* Resultant name, */
+    nam.NAM_RSS = NAM_MAXRSS;          /* storage size. */
+
+    status = sys$parse(&fab);
+    if ((status & 1) == 0)
+    {
+        /* Invalid file name.  Return (re-allocated) original, and hope
+           for a later error message.
+        */
+        if ((p = malloc( strlen( s)+ 1)) != NULL )
+        {
+            strcpy( p, s);
+        }
+        return p;
+    }
+
+    /* Save expanded name length from sys$parse(). */
+    exp_len = nam.NAM_ESL;
+
+    /* Leave expanded name as-is, in case of search failure. */
+    nam.NAM_ESA = NULL;                 /* Expanded name, */
+    nam.NAM_ESS = 0;                    /* storage size. */
+
+    status = sys$search(&fab);
+    if (status & 1)
+    {   /* Zip file exists.  Use resultant (complete, exact) name. */
+        if ((p = malloc( nam.NAM_RSL+ 1)) != NULL )
+        {
+            result[ nam.NAM_RSL] = '\0';
+            strcpy( p, result);
+        }
+    }
+    else
+    {   /* New Zip file.  Use pre-search expanded name. */
+        if ((p = malloc( exp_len+ 1)) != NULL )
+        {
+            exp[ exp_len] = '\0';
+            strcpy( p, exp);
+        }
+    }
+    return p;
+} /* ziptyp() for VMS. */
+
+
+/* 2005-12-30 SMS.
+ *
+ *       vms_file_version().
+ *
+ *    Return the ";version" part of a VMS file specification.
+ */
+
+char *vms_file_version( char *s)
+{
+    int status;
+    struct FAB fab;
+    struct NAM_STRUCT nam;
+    char *p;
+
+    static char exp[ NAM_MAXRSS+ 1];    /* Expanded name storage. */
+
+
+    fab = cc$rms_fab;                   /* Initialize FAB. */
+    nam = CC_RMS_NAM;                   /* Initialize NAM[L]. */
+    fab.FAB_NAM = &nam;                 /* FAB -> NAM[L] */
+
+#ifdef NAML$C_MAXRSS
+
+    fab.fab$l_dna =(char *) -1;         /* Using NAML for default name. */
+    fab.fab$l_fna = (char *) -1;        /* Using NAML for file name. */
+
+#endif /* def NAML$C_MAXRSS */
+
+    /* Argument file name and length. */
+    FAB_OR_NAML( fab, nam).FAB_OR_NAML_FNA = s;
+    FAB_OR_NAML( fab, nam).FAB_OR_NAML_FNS = strlen( s);
+
+    nam.NAM_ESA = exp;                 /* Expanded name, */
+    nam.NAM_ESS = NAM_MAXRSS;          /* storage size. */
+
+    nam.NAM_NOP = NAM_M_SYNCHK;        /* Syntax-only analysis. */
+
+    status = sys$parse(&fab);
+
+    if ((status & 1) == 0)
+    {
+        /* Invalid file name.  Return "". */
+        exp[ 0] = '\0';
+        p = exp;
+    }
+    else
+    {
+        /* Success.  NUL-terminate, and return a pointer to the ";" in
+           the expanded name storage buffer.
+        */
+        p = nam.NAM_L_VER;
+        p[ nam.NAM_B_VER] = '\0';
+    }
+    return p;
+} /* vms_file_version(). */
 
 
 /* 2004-11-23 SMS.
@@ -452,7 +646,7 @@ char *zip;                      /* Path name of Zip archive. */
  *       rab$b_mbf         multi-buffer count (used with rah and wbh).
  */
 
-#define DIAG_FLAG verbose
+#define DIAG_FLAG (verbose >= 2)
 
 /* Default RMS parameter values. */
 
@@ -608,6 +802,8 @@ int fopm_id = FOPM_ID;          /* Callback id storage, modify. */
 int fopr_id = FOPR_ID;          /* Callback id storage, read. */
 int fopw_id = FOPW_ID;          /* Callback id storage, write. */
 
+int fhow_id = FHOW_ID;          /* Callback id storage, in read. */
+
 /* acc_cb() */
 
 int acc_cb( int *id_arg, struct FAB *fab, struct RAB *rab)
@@ -707,16 +903,12 @@ decc_feat_t decc_feat_array[] = {
    /* Preserve command-line case with SET PROCESS/PARSE_STYLE=EXTENDED */
  { "DECC$ARGV_PARSE_STYLE", 1 },
 
-#if 0  /* Possibly useful in the future. */
-
    /* Preserve case for file names on ODS5 disks. */
  { "DECC$EFS_CASE_PRESERVE", 1 },
 
    /* Enable multiple dots (and most characters) in ODS5 file names,
       while preserving VMS-ness of ";version". */
  { "DECC$EFS_CHARSET", 1 },
-
-#endif /* 0 */
 
    /* List terminator. */
  { (char *)NULL, 0 } };
@@ -738,10 +930,10 @@ decc_init_done = 1;
 
 /* Loop through all items in the decc_feat_array[]. */
 
-for (i = 0; decc_feat_array[i].name != NULL; i++)
+for (i = 0; decc_feat_array[ i].name != NULL; i++)
    {
    /* Get the feature index. */
-   feat_index = decc$feature_get_index( decc_feat_array[i].name);
+   feat_index = decc$feature_get_index( decc_feat_array[ i].name);
    if (feat_index >= 0)
       {
       /* Valid item.  Collect its properties. */
@@ -749,29 +941,29 @@ for (i = 0; decc_feat_array[i].name != NULL; i++)
       feat_value_min = decc$feature_get_value( feat_index, 2);
       feat_value_max = decc$feature_get_value( feat_index, 3);
 
-      if ((decc_feat_array[i].value >= feat_value_min) &&
-          (decc_feat_array[i].value <= feat_value_max))
+      if ((decc_feat_array[ i].value >= feat_value_min) &&
+       (decc_feat_array[ i].value <= feat_value_max))
          {
          /* Valid value.  Set it if necessary. */
-         if (feat_value != decc_feat_array[i].value)
+         if (feat_value != decc_feat_array[ i].value)
             {
             sts = decc$feature_set_value( feat_index,
              1,
-             decc_feat_array[i].value);
+             decc_feat_array[ i].value);
             }
          }
       else
          {
          /* Invalid DECC feature value. */
          printf( " INVALID DECC FEATURE VALUE, %d: %d <= %s <= %d.\n",
-                 feat_value,
-                 feat_value_min, decc_feat_array[i].name, feat_value_max);
+          feat_value,
+          feat_value_min, decc_feat_array[ i].name, feat_value_max);
          }
       }
    else
       {
       /* Invalid DECC feature name. */
-      printf( " UNKNOWN DECC FEATURE: %s.\n", decc_feat_array[i].name);
+      printf( " UNKNOWN DECC FEATURE: %s.\n", decc_feat_array[ i].name);
       }
    }
 }
@@ -780,20 +972,28 @@ for (i = 0; decc_feat_array[i].name != NULL; i++)
 
 #pragma nostandard
 
-/* Establish the LIB$INITIALIZE PSECT, with proper alignment and
-   attributes.
+/* Establish the LIB$INITIALIZE PSECTs, with proper alignment and
+   other attributes.  Note that "nopic" is significant only on VAX.
 */
-globaldef { "LIB$INITIALIZ" } readonly _align (LONGWORD)
-   int spare[8] = { 0 };
-globaldef { "LIB$INITIALIZE" } readonly _align (LONGWORD)
-   void (*x_decc_init)() = decc_init;
+#pragma extern_model save
+
+#pragma extern_model strict_refdef "LIB$INITIALIZ" 2, nopic, nowrt
+const int spare[ 8] = { 0 };
+
+#pragma extern_model strict_refdef "LIB$INITIALIZE" 2, nopic, nowrt
+void (*const x_decc_init)() = decc_init;
+
+#pragma extern_model restore
 
 /* Fake reference to ensure loading the LIB$INITIALIZE PSECT. */
 
 #pragma extern_model save
-int lib$initialize(void);
+
+int LIB$INITIALIZE( void);
+
 #pragma extern_model strict_refdef
-int dmy_lib$initialize = (int) lib$initialize;
+int dmy_lib$initialize = (int) LIB$INITIALIZE;
+
 #pragma extern_model restore
 
 #pragma standard

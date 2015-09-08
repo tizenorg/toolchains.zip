@@ -1,9 +1,9 @@
 /*
   Copyright (c) 1990-2005 Info-ZIP.  All rights reserved.
 
-  See the accompanying file LICENSE, version 2004-May-22 or later
+  See the accompanying file LICENSE, version 2005-Feb-10 or later
   (the contents of which are also included in zip.h) for terms of use.
-  If, for some reason, both of these files are missing, the Info-ZIP license
+  If, for some reason, all these files are missing, the Info-ZIP license
   also may be found at:  ftp://ftp.info-zip.org/pub/infozip/license.html
 */
 /* OS specific routines for AMIGA platform.
@@ -43,6 +43,9 @@
  * 26Aug97  PaulK    Added ClearIOErr_exit()
  *
  *  2Jan98  HWalt    Adapted for SAS/C using stat.c replacement functions
+ *
+ *  6Jun00  PaulK    Removed references to time_lib, since new filedate.c
+ *                   supercedes it
  */
 
 #include <exec/memory.h>
@@ -58,19 +61,11 @@
 #  include <proto/dos.h>
 #endif
 #include <stdlib.h>
-
-#ifndef ZCONST
-#  define ZCONST const
-#endif
 #include "ziperr.h"
-void ziperr(int c, ZCONST char *h);
-
-#if defined(AZTEC_C) || defined(__SASC)
-#  define USE_TIME_LIB
-#endif
+void ziperr(int c, const char *h);
 
 #define ZIP
-#if !defined(UTIL) && !defined(USE_TIME_LIB)
+#if !defined(UTIL)
 #  define NO_MKTIME
 #endif
 
