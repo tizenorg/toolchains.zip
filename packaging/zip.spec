@@ -1,11 +1,12 @@
-Summary:    A file compression and packaging utility compatible with PKZIP.
-Name:       zip
-Version:    3.0
-Release:    1.0.1
-License:    BSD-2.0
-Group:      Applications/Archiving
-Source:     %{name}-%{version}.tar.gz
-URL:        http://www.info-zip.org/pub/infozip/Zip.html
+Summary: A file compression and packaging utility compatible with PKZIP.
+Name: zip
+Version: 3.0
+Release: 1.0.1
+License: Info-ZIP
+Group: Applications/Archiving
+Source:%{name}-%{version}.tar.gz
+Source1001: packaging/zip.manifest
+URL: http://www.info-zip.org/pub/infozip/Zip.html
 
 %description
 The zip program is a compression and file packaging utility.  Zip is
@@ -19,6 +20,7 @@ program.
 %prep
 %setup -q
 %build
+cp %{SOURCE1001} .
 make -f unix/Makefile prefix=/usr "CFLAGS=$RPM_OPT_FLAGS -I. -DUNIX -D_LARGEFILE64_SOURCE" generic_gcc
 
 %install
@@ -43,6 +45,7 @@ rm -rf $RPM_BUILD_ROOT
 
 %files
 %defattr(-,root,root)
+%manifest zip.manifest
 %doc README BUGS CHANGES TODO WHATSNEW WHERE LICENSE
 %doc proginfo/algorith.txt
 /usr/bin/zipnote
